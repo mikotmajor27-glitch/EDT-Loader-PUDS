@@ -1,11 +1,9 @@
 import type { Metadata } from 'next';
-import { AdvanceBookingProvider } from './context/AdvanceBookingContext';
-import { BookingTerminalProvider } from './context/BookingTerminalContext';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'PUDS Advance Booking Terminal',
-  description: 'Philippine Unified Distributed System - Advance Booking Terminal Pickup',
+  title: 'PUDS - Philippine Universal Data Slot',
+  description: 'Buy mobile data for Smart, Globe, or DITO from one place. Fast, affordable, and reliable.',
   viewport: {
     width: 'device-width',
     initialScale: 1,
@@ -21,11 +19,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-gray-50">
-        <AdvanceBookingProvider>
-          <BookingTerminalProvider>
-            {children}
-          </BookingTerminalProvider>
-        </AdvanceBookingProvider>
+        {children}
       </body>
     </html>
   );
