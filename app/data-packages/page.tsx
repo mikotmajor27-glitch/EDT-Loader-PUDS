@@ -9,21 +9,36 @@ interface DataPackage {
   dataGB: number;
   price: number;
   popular?: boolean;
+  promo?: boolean;
 }
 
 const packages: DataPackage[] = [
+  {
+    id: '1day',
+    days: 1,
+    dataGB: 2,
+    price: 30,
+    promo: true,
+  },
+  {
+    id: '3days',
+    days: 3,
+    dataGB: 5,
+    price: 75,
+    promo: true,
+  },
   {
     id: '7days',
     days: 7,
     dataGB: 12,
     price: 160,
+    popular: true,
   },
   {
     id: '15days',
     days: 15,
     dataGB: 20,
     price: 210,
-    popular: true,
   },
   {
     id: '30days',
@@ -57,30 +72,35 @@ export default function DataPackagesPage() {
       </div>
 
       {/* Packages Container */}
-      <div className="max-w-6xl mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="max-w-7xl mx-auto px-4 py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
           {packages.map((pkg) => (
             <div
               key={pkg.id}
-              className={`relative rounded-2xl transition-all duration-300 ${
+              className={`relative rounded-xl transition-all duration-300 ${
                 pkg.popular
-                  ? 'ring-2 ring-blue-400 md:scale-105 shadow-2xl'
-                  : 'shadow-lg'
+                  ? 'ring-2 ring-blue-400 lg:scale-105 shadow-2xl'
+                  : 'shadow-lg hover:shadow-xl'
               } ${
                 pkg.popular
                   ? 'bg-gradient-to-br from-blue-50 to-blue-100'
                   : 'bg-white'
               } overflow-hidden`}
             >
-              {/* Popular Badge */}
+              {/* Promo/Popular Badge */}
+              {pkg.promo && (
+                <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-amber-500 to-amber-400 text-white py-1 text-center font-bold text-xs">
+                  PROMO
+                </div>
+              )}
               {pkg.popular && (
-                <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-blue-500 text-white py-2 text-center font-bold text-sm">
-                  MOST POPULAR
+                <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-blue-600 to-blue-500 text-white py-1 text-center font-bold text-xs">
+                  BEST VALUE
                 </div>
               )}
 
               {/* Content */}
-              <div className={`p-8 ${pkg.popular ? 'pt-16' : ''}`}>
+              <div className={`p-6 ${pkg.promo || pkg.popular ? 'pt-12' : ''}`}>
                 {/* Duration and Data */}
                 <div className="mb-6">
                   <h2 className="text-3xl font-bold text-slate-900 mb-2">
@@ -124,13 +144,15 @@ export default function DataPackagesPage() {
                 {/* CTA Button */}
                 <button
                   onClick={() => handleSelectPackage(pkg.id)}
-                  className={`w-full py-3 px-6 rounded-lg font-bold transition-all duration-300 ${
+                  className={`w-full py-2 px-6 rounded-lg font-bold transition-all duration-300 text-sm ${
                     pkg.popular
                       ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:shadow-lg hover:from-blue-700 hover:to-blue-600'
+                      : pkg.promo
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-white hover:shadow-lg hover:from-amber-600 hover:to-amber-500'
                       : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                   }`}
                 >
-                  {pkg.popular ? 'Select Plan' : 'Choose Package'}
+                  Load Data
                 </button>
 
                 {/* Data per Day Info */}
