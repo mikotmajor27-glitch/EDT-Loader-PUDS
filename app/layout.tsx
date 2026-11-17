@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Analytics } from '@vercel/analytics/next';
 import { AdvanceBookingProvider } from './context/AdvanceBookingContext';
 import { BookingTerminalProvider } from './context/BookingTerminalContext';
 import './globals.css';
@@ -26,6 +27,7 @@ export default function RootLayout({
             {children}
           </BookingTerminalProvider>
         </AdvanceBookingProvider>
+        <Analytics />
       </body>
     </html>
   );
