@@ -1,16 +1,18 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { Analytics } from '@vercel/analytics/next';
 import { AdvanceBookingProvider } from './context/AdvanceBookingContext';
 import { BookingTerminalProvider } from './context/BookingTerminalContext';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'PUDS Advance Booking Terminal',
-  description: 'Philippine Unified Distributed System - Advance Booking Terminal Pickup',
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
+  title: 'PUDS: Ang Wallet sa Balat',
+  description: 'Isang wallet para sa araw-araw. Send, receive, mag-load sa parehong SIM, at magbayad sa PUDS Terminal.',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#f7f8f3',
 };
 
 export default function RootLayout({
@@ -26,6 +28,7 @@ export default function RootLayout({
             {children}
           </BookingTerminalProvider>
         </AdvanceBookingProvider>
+        <Analytics />
       </body>
     </html>
   );
