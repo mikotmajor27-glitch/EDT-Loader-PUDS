@@ -98,9 +98,13 @@ The Advance Booking Terminal is a kiosk-based pickup system that enables custome
 
 ### Demo PUDS IDs and Bookings
 
-**PUDS-12345** (2 bookings at different merchants)
+**PUDS-12345** (6 bookings at different merchants)
 - Booking 1 at Jollibee (Makati Mall) - Code: 1234
 - Booking 2 at McDonald's (BGC) - Code: 9012
+- Booking 3 at Greenwich (Quezon City) - Code: 2468
+- Booking 4 at KFC (Makati) - Code: 1357
+- Booking 5 at Chowking (Pasig) - Code: 8642
+- Booking 6 at Mang Inasal (Mandaluyong) - Code: 9753
 
 **PUDS-67890** (1 booking)
 - Booking at McDonald's (BGC) - Code: 5678

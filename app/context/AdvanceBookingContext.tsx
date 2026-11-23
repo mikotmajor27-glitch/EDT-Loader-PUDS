@@ -80,6 +80,63 @@ const generateMockBookings = (): AdvanceBooking[] => [
     status: 'ready',
     createdAt: new Date().toISOString(),
   },
+  {
+    id: 'BK004',
+    pudsId: 'PUDS-12345',
+    merchantId: 'GREENWICH-001',
+    merchantName: 'Greenwich',
+    merchantLocation: 'Quezon City',
+    items: [
+      { id: '1', name: 'Overload Pizza', quantity: 1, price: 399 },
+      { id: '2', name: 'Lasagna Solo', quantity: 1, price: 149 },
+    ],
+    totalAmount: 548,
+    secretCode: '2468',
+    status: 'ready',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'BK005',
+    pudsId: 'PUDS-12345',
+    merchantId: 'KFC-001',
+    merchantName: 'KFC',
+    merchantLocation: 'Makati',
+    items: [
+      { id: '1', name: 'Chicken Meal', quantity: 2, price: 199 },
+    ],
+    totalAmount: 398,
+    secretCode: '1357',
+    status: 'ready',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'BK006',
+    pudsId: 'PUDS-12345',
+    merchantId: 'CHOWKING-001',
+    merchantName: 'Chowking',
+    merchantLocation: 'Pasig',
+    items: [
+      { id: '1', name: 'Chao Fan Meal', quantity: 1, price: 149 },
+    ],
+    totalAmount: 149,
+    secretCode: '8642',
+    status: 'ready',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'BK007',
+    pudsId: 'PUDS-12345',
+    merchantId: 'MANG-INASAL-001',
+    merchantName: 'Mang Inasal',
+    merchantLocation: 'Mandaluyong',
+    items: [
+      { id: '1', name: 'Pecho Meal', quantity: 1, price: 149 },
+    ],
+    totalAmount: 149,
+    secretCode: '9753',
+    status: 'ready',
+    createdAt: new Date().toISOString(),
+  },
 ];
 
 export function AdvanceBookingProvider({
