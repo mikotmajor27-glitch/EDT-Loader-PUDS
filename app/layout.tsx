@@ -5,8 +5,8 @@ import { BookingTerminalProvider } from './context/BookingTerminalContext';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'PUDS: Ang Wallet sa Balat',
-  description: 'Isang wallet para sa araw-araw. Send, receive, mag-load sa parehong SIM, at magbayad sa PUDS Terminal.',
+  title: 'PUDS Demo Wallet · Ang Wallet sa Balat',
+  description: 'Interactive PUDS demo wallet with simulated PHP balances, recipient transfers, single-use terminal codes, and persistent demo history.'
 };
 
 export const viewport: Viewport = {

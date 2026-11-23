@@ -1,229 +1,149 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, Banknote,
-  Camera, Check, ChevronDown, CircleHelp, Clock3, Copy, CreditCard, Fingerprint,
-  House, LockKeyhole, Menu, QrCode, ScanLine, ShieldCheck, Smartphone, Store,
-  Wallet, Wifi, Zap,
-} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeftRight, ArrowUpRight, BadgeCheck, Check, CircleHelp, Clock3, Copy, History, LockKeyhole, RotateCcw, Settings, ShieldCheck, Store, Wallet } from 'lucide-react';
 
-type Portal = 'wallet' | 'terminal';
-type View = 'home' | 'register' | 'send' | 'receive' | 'edt' | 'security' | 'cashout';
-type PaymentType = 'cash' | 'bill' | 'restaurant';
-type TransactionKind = 'cashout' | 'bill' | 'advance' | 'walkin';
+type Profile = { id: string; name: string };
+type DemoCode = { code: string; pudsId: string; amount: number; status: 'Available' | 'Used/Expired'; createdAt: string };
+type Transaction = { ref: string; type: string; amount: number; from: string; to: string; note: string; status: 'Completed'; createdAt: string };
+type DemoState = { balances: Record<string, number>; codes: DemoCode[]; transactions: Transaction[] };
+type Screen = 'home' | 'send' | 'terminal' | 'history' | 'settings';
 
-const restaurantPartners = [
-  { id: 'jollibee', name: 'Jollibee', category: 'Chicken · Filipino', initial: 'J', branches: ['Cubao - Gateway Mall', 'Makati - Ayala Avenue', 'Katipunan - Quezon City'] },
-  { id: 'mcdo', name: "McDonald’s", category: 'Burgers · Fries', initial: 'M', branches: ['Cubao - Gateway Mall', 'Makati - Ayala Avenue', 'BGC - High Street'] },
-  { id: 'mang-inasal', name: 'Mang Inasal', category: 'Inihaw · Unli rice', initial: 'MI', branches: ['Cubao - Aurora Boulevard', 'Makati - Ayala Avenue', 'Quezon City - Katipunan'] },
-  { id: 'chowking', name: 'Chowking', category: 'Chinese · Filipino', initial: 'C', branches: ['Cubao - Gateway Mall', 'Makati - Ayala Avenue', 'BGC - High Street'] },
-  { id: 'kfc', name: 'KFC', category: 'Chicken · Meals', initial: 'K', branches: ['Cubao - Gateway Mall', 'Makati - Ayala Avenue', 'Quezon City - Katipunan'] },
-  { id: 'other', name: 'Iba pang partner', category: 'Restaurants near you', initial: '+', branches: ['PUDS partner location - Quezon City', 'PUDS partner location - Makati'] },
+const STORAGE_KEY = 'puds-wallet-demo-v1';
+const STARTING_BALANCE = 12480.5;
+const profiles: Profile[] = [
+  { id: 'PUDS-24819', name: 'Maria Dela Cruz' },
+  { id: 'PUDS-10001', name: 'Juan Dela Cruz' },
+  { id: 'PUDS-10002', name: 'Maria Santos' },
+  { id: 'PUDS-10003', name: 'Pedro Reyes' },
 ];
-
-const restaurantMeals = [
-  { name: 'Signature meal with rice', price: 149 },
-  { name: 'Burger / sandwich meal', price: 189 },
-  { name: 'Family combo meal', price: 349 },
-];
-
-const packages = [
-  { name: 'Starter', data: '10 GB', duration: '7 days', price: 160, perSim: '5 GB bawat SIM' },
-  { name: 'Sulit', data: '20 GB', duration: '15 days', price: 300, perSim: '10 GB bawat SIM' },
-  { name: 'Todo', data: '40 GB', duration: '30 days', price: 600, perSim: '20 GB bawat SIM' },
-];
-
-const demoPudsOwners: Record<string, string> = {
-  'PUDS-24819': 'Maria Dela Cruz',
-  'PUDS-12345': 'Ana Reyes',
-  'PUDS-54321': 'Juan Dela Cruz',
-  'PUDS-67890': 'Carlo Santos',
-};
-
-function Brand({ compact = false }: { compact?: boolean }) {
-  return <div className="brand-lockup"><span className="brand-mark"><Wallet size={19} strokeWidth={2.2} /></span><span><strong>PUDS</strong>{!compact && <small>Ang Wallet sa Balat</small>}</span></div>;
-}
+const emptyState = (): DemoState => ({ balances: Object.fromEntries(profiles.map((profile) => [profile.id, STARTING_BALANCE])), codes: [], transactions: [] });
+const money = (amount: number) => amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const newReference = () => `PUDS-${Date.now().toString().slice(-8)}-${Math.floor(100 + Math.random() * 900)}`;
 
 export default function PudsDemo() {
-  const [portal, setPortal] = useState<Portal>('wallet');
-  const [view, setView] = useState<View>('home');
-  const [registered, setRegistered] = useState(false);
-  const [step, setStep] = useState(1);
-  const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [idFile, setIdFile] = useState('');
-  const [faceVerified, setFaceVerified] = useState(false);
+  const [screen, setScreen] = useState<Screen>('home');
+  const [currentId, setCurrentId] = useState(profiles[0].id);
+  const [demo, setDemo] = useState<DemoState>(emptyState);
+  const [hydrated, setHydrated] = useState(false);
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('250');
-  const [paymentType, setPaymentType] = useState<PaymentType>('cash');
-  const [orderType, setOrderType] = useState<'advance' | 'walkin'>('advance');
-  const [restaurantId, setRestaurantId] = useState('jollibee');
-  const [branch, setBranch] = useState('Jollibee Cubao - Gateway Mall');
-  const [mealIndex, setMealIndex] = useState(0);
-  const selectedRestaurant = restaurantPartners.find((restaurant) => restaurant.id === restaurantId) ?? restaurantPartners[0];
-  const [activeTransaction, setActiveTransaction] = useState<{ code: string; kind: TransactionKind; amount: number; branch: string; item: string; pudsId: string } | null>(null);
-  const [secretCode, setSecretCode] = useState('');
-  const [transactionDone, setTransactionDone] = useState(false);
-  const [terminalId, setTerminalId] = useState('PUDS-24819');
+  const [note, setNote] = useState('');
+  const [code, setCode] = useState('');
+  const [terminalId, setTerminalId] = useState(profiles[0].id);
   const [terminalCode, setTerminalCode] = useState('');
-  const [cashoutDone, setCashoutDone] = useState(false);
-  const [terminalAction, setTerminalAction] = useState<TransactionKind>('walkin');
   const [terminalAmount, setTerminalAmount] = useState('420');
-  const [receiptNumber, setReceiptNumber] = useState('');
-  const [merchantAuthOpen, setMerchantAuthOpen] = useState(false);
-  const [merchantEmail, setMerchantEmail] = useState('');
-  const [merchantOtp, setMerchantOtp] = useState('');
-  const [merchantOtpSent, setMerchantOtpSent] = useState(false);
-  const [merchantOtpVerified, setMerchantOtpVerified] = useState(false);
-  const [merchantPassword, setMerchantPassword] = useState('');
-  const [merchantPasswordInput, setMerchantPasswordInput] = useState('');
-  const [merchantPasswordConfirm, setMerchantPasswordConfirm] = useState('');
-  const [merchantVerified, setMerchantVerified] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState(1);
-  const [loaded, setLoaded] = useState(false);
-  const [simOne, setSimOne] = useState('0917 555 0142');
-  const [simTwo, setSimTwo] = useState('0998 555 0142');
+  const [receipt, setReceipt] = useState<Transaction | null>(null);
   const [notice, setNotice] = useState('');
-  const matchedTransaction = activeTransaction && terminalId.trim().toUpperCase() === activeTransaction.pudsId && terminalCode === activeTransaction.code ? activeTransaction : null;
-  const matchedOwnerName = matchedTransaction ? demoPudsOwners[matchedTransaction.pudsId] : undefined;
-  const normalizedRecipientId = recipient.trim().toUpperCase();
-  const recipientOwnerName = /^PUDS-\d{5}$/.test(normalizedRecipientId) ? demoPudsOwners[normalizedRecipientId] : undefined;
 
-  const backHome = () => { setView('home'); setNotice(''); };
-  const enterTerminal = () => {
-    setPortal('terminal');
-    setView('home');
-    setNotice('');
-    setMerchantVerified(false);
-    setMerchantPasswordInput('');
-    setMerchantPasswordConfirm('');
-    setMerchantOtpSent(false);
-    setMerchantOtpVerified(false);
-    setMerchantOtp('');
-    setMerchantAuthOpen(true);
-  };
-  const leaveTerminal = () => {
-    setPortal('wallet');
-    backHome();
-    setMerchantVerified(false);
-    setMerchantAuthOpen(false);
-    setMerchantPasswordInput('');
-    setMerchantPasswordConfirm('');
-  };
-  const completeRegistration = () => { setRegistered(true); setView('home'); setStep(1); };
-  const sendFunds = () => {
-    if (paymentType === 'cash' && !/^PUDS-\d{5}$/i.test(recipient.trim())) {
-      setNotice('Ilagay ang valid na PUDS ID (hal. PUDS-54321).');
-      return;
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<DemoState>;
+        const defaults = emptyState();
+        setDemo({
+          balances: { ...defaults.balances, ...(parsed.balances ?? {}) },
+          codes: Array.isArray(parsed.codes) ? parsed.codes : [],
+          transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+        });
+      }
+    } catch {
+      setDemo(emptyState());
     }
-    if (paymentType !== 'restaurant' && Number(amount) <= 0) {
-      setNotice('Maglagay ng halagang mas mataas sa ₱0.');
-      return;
-    }
-    const code = String(Math.floor(1000 + Math.random() * 9000));
-    const kind: TransactionKind = paymentType === 'cash' ? 'cashout' : paymentType === 'bill' ? 'bill' : orderType;
-    const amountDue = paymentType === 'restaurant' ? (orderType === 'advance' ? restaurantMeals[mealIndex].price : 0) : Number(amount || 0);
-    const orderBranch = paymentType === 'restaurant' ? (orderType === 'advance' ? `${selectedRestaurant.name} ${branch}` : `Any ${selectedRestaurant.name} branch · Walk-in / No Order Yet`) : recipient || 'PUDS Tindahan';
-    const orderItem = paymentType === 'restaurant' && orderType === 'advance' ? restaurantMeals[mealIndex].name : paymentType === 'restaurant' ? 'Walk-in purchase' : recipient || 'PUDS payment';
-    setSecretCode(code);
-    const pudsId = paymentType === 'cash' ? recipient.trim().toUpperCase() : 'PUDS-24819';
-    setActiveTransaction({ code, kind, amount: amountDue, branch: orderBranch, item: orderItem, pudsId });
-    setTerminalAction(kind);
-    setTerminalId(pudsId);
-    if (kind === 'cashout' && amountDue > 0) setTerminalAmount(String(amountDue));
-    setTransactionDone(true);
-    setCashoutDone(false);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (hydrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(demo));
+  }, [demo, hydrated]);
+
+  const currentProfile = profiles.find((profile) => profile.id === currentId) ?? profiles[0];
+  const balance = demo.balances[currentId] ?? STARTING_BALANCE;
+  const resolvedRecipient = profiles.find((profile) => profile.id === recipient.trim().toUpperCase());
+  const availableCode = useMemo(() => demo.codes.find((item) => item.code === terminalCode && item.pudsId === terminalId.trim().toUpperCase() && item.status === 'Available'), [demo.codes, terminalCode, terminalId]);
+
+  const submitTransfer = () => {
+    const recipientId = recipient.trim().toUpperCase();
+    const value = Number(amount);
+    if (!/^PUDS-\d{5}$/.test(recipientId)) return setNotice('Enter a valid PUDS-XXXXX ID.');
+    if (recipientId === currentId) return setNotice('Choose a different recipient profile.');
+    if (!Number.isFinite(value) || value <= 0 || Math.round(value * 100) !== value * 100) return setNotice('Enter a valid amount greater than ₱0.');
+    if (value > balance) return setNotice('Insufficient demo balance for this transfer.');
+    const transaction: Transaction = { ref: newReference(), type: 'Send money', amount: value, from: currentId, to: recipientId, note: note.trim(), status: 'Completed', createdAt: new Date().toISOString() };
+    setDemo((prev) => ({ ...prev, balances: { ...prev.balances, [currentId]: (prev.balances[currentId] ?? STARTING_BALANCE) - value, ...(profiles.some((profile) => profile.id === recipientId) ? { [recipientId]: (prev.balances[recipientId] ?? STARTING_BALANCE) + value } : {}) }, transactions: [transaction, ...prev.transactions] }));
+    setReceipt(transaction);
+    setNotice('Transfer completed. This is simulated demo PHP only.');
   };
-  const processCashout = () => {
-    if (!merchantVerified) { setNotice('I-unlock muna ang PUDS Terminal gamit ang password ng may-ari.'); return; }
-    if (!activeTransaction) { setNotice('Gumawa muna ng secret code sa PUDS App demo.'); return; }
-    if (terminalId.trim().toUpperCase() !== activeTransaction.pudsId || terminalCode !== activeTransaction.code) { setNotice('Hindi tugma ang PUDS ID o secret code. Subukan ulit.'); return; }
-    if (terminalAction !== activeTransaction.kind) { setNotice('Hindi tugma ang transaction type. Piliin ang tamang cashier action.'); return; }
-    if ((terminalAction === 'walkin' || terminalAction === 'cashout') && Number(terminalAmount) <= 0) { setNotice('Maglagay ng valid na halaga.'); return; }
-    setReceiptNumber(`PUDS-${Math.floor(100000 + Math.random() * 900000)}`);
-    setCashoutDone(true);
-    setNotice('');
+
+  const generateCode = () => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0 || Math.round(value * 100) !== value * 100) return setNotice('Enter a valid amount greater than ₱0.');
+    if (value > balance) return setNotice('Insufficient demo balance for this code.');
+    const secret = String(Math.floor(1000 + Math.random() * 9000));
+    const created: DemoCode = { code: secret, pudsId: currentId, amount: value, status: 'Available', createdAt: new Date().toISOString() };
+    setDemo((prev) => ({ ...prev, codes: [created, ...prev.codes] }));
+    setCode(secret);
+    setNotice('Single-use code generated. Present it with your PUDS ID at the terminal.');
   };
+
+  const processTerminal = () => {
+    const id = terminalId.trim().toUpperCase();
+    if (!availableCode) return setNotice('Code not found, expired, or already used. Check the PUDS ID and 4-digit code.');
+    const amountToDebit = Number(terminalAmount);
+    if (!Number.isFinite(amountToDebit) || amountToDebit <= 0 || Math.round(amountToDebit * 100) !== amountToDebit * 100) return setNotice('Enter a valid terminal amount greater than ₱0.');
+    if (amountToDebit > availableCode.amount) return setNotice('The terminal amount cannot exceed the amount authorized by this code.');
+    if (amountToDebit > (demo.balances[id] ?? STARTING_BALANCE)) return setNotice('Insufficient demo balance.');
+    const transaction: Transaction = { ref: newReference(), type: 'Terminal payment / cash-out', amount: amountToDebit, from: id, to: 'PUDS Terminal', note: `Terminal amount entered: ₱${money(Number(terminalAmount) || 0)}`, status: 'Completed', createdAt: new Date().toISOString() };
+    setDemo((prev) => ({ ...prev, balances: { ...prev.balances, [id]: (prev.balances[id] ?? STARTING_BALANCE) - amountToDebit }, codes: prev.codes.map((item) => item.code === availableCode.code ? { ...item, status: 'Used/Expired' } : item), transactions: [transaction, ...prev.transactions] }));
+    setReceipt(transaction);
+    setNotice('Payment completed. This code is now used and expired.');
+    setTerminalCode('');
+  };
+
+  const resetDemo = () => {
+    const fresh = emptyState();
+    setDemo(fresh);
+    setReceipt(null);
+    setCode('');
+    setNotice('Demo data reset. Each sample wallet is back to ₱12,480.50.');
+  };
+
+  const dateTime = (iso: string) => new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 
   return (
-    <main className="puds-app">
+    <main className="puds-app demo-wallet">
       <header className="topbar">
-        <a className="brand-link" href="#home" onClick={(event) => { event.preventDefault(); backHome(); }} aria-label="PUDS home"><Brand /></a>
-        <nav className="portal-switch" aria-label="Pumili ng portal">
-          <button className={portal === 'wallet' ? 'portal-tab active' : 'portal-tab'} onClick={leaveTerminal}><Wallet size={16} /> PUDS App</button>
-          <button className={portal === 'terminal' ? 'portal-tab active' : 'portal-tab'} onClick={enterTerminal}><Store size={16} /> PUDS Terminal</button>
-        </nav>
-        <button className="help-button" onClick={() => setNotice('Demo mode ito. Walang totoong pera o sensitibong impormasyon na ipinapadala.')}><CircleHelp size={17} /><span>Help</span></button>
+        <a className="brand-link" href="#home" onClick={(event) => { event.preventDefault(); setScreen('home'); setReceipt(null); }} aria-label="PUDS home"><span className="brand-lockup"><span className="brand-mark"><Wallet size={19} /></span><span><strong>PUDS</strong><small>Ang Wallet sa Balat</small></span></span></a>
+        <nav className="portal-switch" aria-label="Demo app navigation"><button className={screen !== 'terminal' ? 'portal-tab active' : 'portal-tab'} onClick={() => { setScreen('home'); setReceipt(null); }}><Wallet size={16} /> PUDS App</button><button className={screen === 'terminal' ? 'portal-tab active' : 'portal-tab'} onClick={() => { setScreen('terminal'); setReceipt(null); }}><Store size={16} /> PUDS Terminal</button></nav>
+        <button className="help-button" onClick={() => setNotice('DEMO MODE: simulated PHP funds only. No real money or payment credentials are used.')}><CircleHelp size={17} /><span>Help</span></button>
       </header>
+      <div className="demo-ribbon"><span className="live-dot" /><b>DEMO MODE</b><span>Simulated PHP · No real money</span><span className="ribbon-spacer" /><ShieldCheck size={14} /> Saved on this device</div>
+      {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss notification">×</button></div>}
 
-      <div className="demo-ribbon"><span className="live-dot" /> Interactive demo <span className="ribbon-divider">·</span> PUDS 1-2026-50120 <span className="ribbon-spacer" /> <ShieldCheck size={14} /> Your details stay on this device</div>
+      {screen === 'home' && <>
+        <section className="welcome-row"><div><div className="eyebrow">YOUR DEMO WALLET · SIMULATED PHP</div><h1>Money in your<br className="mobile-break" /> <em>hands.</em></h1><p>Try transfers and terminal payments safely in a persistent demo.</p></div><label className="account-pill profile-picker">Demo profile<select aria-label="Choose demo wallet profile" value={currentId} onChange={(event) => { setCurrentId(event.target.value); setNotice('Switched demo profile. Each profile has its own balance.'); }}><option value="PUDS-24819">Maria Dela Cruz · PUDS-24819</option>{profiles.slice(1).map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.id}</option>)}</select></label></section>
+        <section className="wallet-layout"><div className="wallet-column"><div className="balance-card"><div className="balance-top"><span><span className="balance-icon"><Wallet size={16} /></span> PUDS WALLET</span><span className="verified-label"><BadgeCheck size={14} /> DEMO MODE</span></div><div className="balance-amount"><span>₱</span> {Math.floor(balance).toLocaleString('en-PH')}<span className="cents">.{(balance % 1).toFixed(2).slice(2)}</span></div><div className="balance-caption">Available balance <span>•</span> Simulated funds only</div><div className="balance-footer"><span><span className="balance-dot" /> Ready to use</span><span>{currentProfile.id}</span></div></div>
+          <div className="action-grid"><button onClick={() => { setScreen('send'); setReceipt(null); }} className="action-tile"><span className="action-icon send-icon"><ArrowUpRight size={20} /></span><b>Send money</b><small>Transfer or create terminal code</small></button><button onClick={() => { setScreen('terminal'); setReceipt(null); }} className="action-tile"><span className="action-icon receive-icon"><Store size={20} /></span><b>PUDS Terminal</b><small>Use a single-use code</small></button><button onClick={() => setScreen('history')} className="action-tile"><span className="action-icon edt-icon"><History size={20} /></span><b>History</b><small>Recent demo activity</small></button><button onClick={() => setScreen('settings')} className="action-tile"><span className="action-icon secure-icon"><Settings size={20} /></span><b>Settings</b><small>Reset demo data</small></button></div>
+          <div className="section-heading"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>Transaction history</h2></div><button className="text-link" onClick={() => setScreen('history')}>View all <ArrowUpRight size={14} /></button></div>
+          <div className="activity-card">{demo.transactions.filter((item) => item.from === currentId || item.to === currentId).slice(0, 4).map((item) => <div className="activity-row" key={item.ref}><span className="activity-symbol activity-blue"><ArrowUpRight size={17} /></span><span className="activity-copy"><b>{item.type}</b><small>{dateTime(item.createdAt)} · {item.ref}</small></span><strong className={item.to === currentId ? 'amount-in' : ''}>{item.to === currentId ? '+' : '−'} ₱{money(item.amount)}</strong></div>)}{!demo.transactions.some((item) => item.from === currentId || item.to === currentId) && <div className="empty-activity">No transactions yet. Send a transfer or try a terminal code.</div>}</div></div>
+          <aside className="side-column"><div className="side-card profile-card"><div className="side-card-top"><span className="side-icon"><ShieldCheck size={18} /></span><span className="eyebrow">YOUR PUDS ID</span><button onClick={() => { navigator.clipboard?.writeText(currentId); setNotice('PUDS ID copied.'); }} aria-label="Copy PUDS ID"><Copy size={15} /></button></div><strong className="puds-number">{currentId}</strong><p>{currentProfile.name}<br />Switch profiles above to test inbound transfers.</p><div className="demo-directory"><b>Demo recipient directory</b>{profiles.slice(1).map((profile) => <button key={profile.id} onClick={() => setCurrentId(profile.id)}>{profile.id} · {profile.name}</button>)}</div></div><div className="security-note"><LockKeyhole size={15} /><span><b>Presentation-safe demo.</b><br />Balances and activity are stored in this browser only.</span></div></aside></section>
+      </>}
 
-      {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Isara">×</button></div>}
+      {screen === 'send' && <section className="flow-wrap"><button className="back-link" onClick={() => { setScreen('home'); setReceipt(null); }}><ArrowLeftRight size={16} /> Wallet</button><div className="flow-card"><div className="flow-heading"><span className="eyebrow">PUDS APP · DEMO MODE</span><h1>{receipt ? 'Payment receipt' : 'Send money'}</h1><p>{receipt ? 'Completed successfully. Demo funds only.' : `Available balance: ₱${money(balance)} · ${currentId}`}</p></div>{receipt ? <div className="demo-receipt"><span className="success-check"><Check size={25} /></span><span className="eyebrow">DIGITAL RECEIPT · COMPLETED</span><strong>₱{money(receipt.amount)}</strong><div className="receipt-lines"><span>Reference number</span><b>{receipt.ref}</b><span>Timestamp</span><b>{dateTime(receipt.createdAt)}</b><span>From</span><b>{receipt.from}</b><span>To</span><b>{receipt.to}</b>{receipt.note && <><span>Note</span><b>{receipt.note}</b></>}<span>Status</span><b>Completed</b></div><button className="primary-button full-button" onClick={() => { setReceipt(null); setScreen('home'); }}>Done</button></div> : <div className="flow-fields"><label>Recipient PUDS ID<input value={recipient} onChange={(event) => setRecipient(event.target.value.toUpperCase())} placeholder="PUDS-XXXXX" list="puds-recipients" autoCapitalize="characters" /><datalist id="puds-recipients">{profiles.filter((profile) => profile.id !== currentId).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</datalist></label>{resolvedRecipient && <div className="merchant-hint"><BadgeCheck size={17} /><span><b>{resolvedRecipient.name}</b><small>Demo recipient · {resolvedRecipient.id}</small></span></div>}<label>Amount (₱)<input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0.01" step="0.01" inputMode="decimal" /></label><label>Note (optional)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="What is this for?" maxLength={120} /></label><button className="primary-button full-button" onClick={submitTransfer}>Send money · ₱{money(Number(amount) || 0)} <ArrowUpRight size={16} /></button><div className="or-divider"><span>OR CREATE A TERMINAL CODE</span></div><p className="privacy-note"><Clock3 size={14} /> A code reserves funds; the wallet is debited only once it is used at the terminal.</p><button className="outline-action full-button" onClick={generateCode}>Generate 4-digit Secret Code</button>{code && <div className="generated-code"><span className="eyebrow">SINGLE-USE CODE FOR {currentId}</span><strong>{code}</strong><small>₱{money(Number(amount) || 0)} · Available until used · share securely in this demo</small><button className="text-link" onClick={() => { setScreen('terminal'); setTerminalId(currentId); setTerminalCode(''); }}>Open PUDS Terminal</button></div>}</div>}</div></section>}
 
-      {portal === 'wallet' ? (
-        <>
-          {view === 'home' && <>
-            <section className="welcome-row">
-              <div><div className="eyebrow">MAGANDANG ARAW <span>·</span> GOOD DAY</div><h1>Ang pera mo,<br className="mobile-break" /> <em>nasa palad mo.</em></h1><p>Isang wallet para sa araw-araw. Simple, mabilis, at para sa lahat.</p></div>
-              <div className="account-pill"><span className="avatar">{registered ? 'M' : 'G'}</span><span><b>{registered ? 'Maria Dela Cruz' : 'Guest user'}</b><small>{registered ? 'PUDS-24819' : 'Explore the demo'}</small></span><ChevronDown size={15} /></div>
-            </section>
-            <section className="wallet-layout">
-              <div className="wallet-column">
-                <div className="balance-card">
-                  <div className="balance-top"><span><span className="balance-icon"><Wallet size={16} /></span> PUDS WALLET</span><span className="verified-label"><BadgeCheck size={14} /> {registered ? 'Verified demo' : 'Demo account'}</span></div>
-                  <div className="balance-amount"><span>₱</span> 12,480<span className="cents">.50</span></div>
-                  <div className="balance-caption">Available balance <span>•</span> Demo funds only</div>
-                  <div className="balance-footer"><span><span className="balance-dot" /> Ready to use</span><span>Updated just now</span></div>
-                </div>
-                <div className="action-grid">
-                  <button onClick={() => { setView('send'); setTransactionDone(false); }} className="action-tile"><span className="action-icon send-icon"><ArrowUpRight size={20} /></span><b>Send</b><small>Magbayad o magpadala</small></button>
-                  <button onClick={() => setView('receive')} className="action-tile"><span className="action-icon receive-icon"><ArrowDownLeft size={20} /></span><b>Receive</b><small>Tumanggap ng bayad</small></button>
-                  <button onClick={() => { setView('edt'); setLoaded(false); }} className="action-tile"><span className="action-icon edt-icon"><Zap size={20} /></span><b>EDT Loader</b><small>Load sa parehong SIM</small></button>
-                  <button onClick={() => setView('security')} className="action-tile"><span className="action-icon secure-icon"><Fingerprint size={20} /></span><b>Security</b><small>Protektahan ang account</small></button>
-                </div>
-                <div className="section-heading"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>Mga galaw mo</h2></div><button className="text-link" onClick={() => setNotice('Ito ang mga halimbawang transaksyon sa demo.')}>View all <ArrowRight size={14} /></button></div>
-                <div className="activity-card">
-                  <div className="activity-row"><span className="activity-symbol activity-green"><ArrowDownLeft size={17} /></span><span className="activity-copy"><b>Bayad mula kay Ana</b><small>Today, 10:42 AM · PUDS ID</small></span><strong className="amount-in">+ ₱850.00</strong></div>
-                  <div className="activity-row"><span className="activity-symbol activity-orange"><Zap size={17} /></span><span className="activity-copy"><b>EDT data bundle</b><small>Yesterday · Both SIMs</small></span><strong>− ₱300.00</strong></div>
-                  <div className="activity-row"><span className="activity-symbol activity-blue"><Banknote size={17} /></span><span className="activity-copy"><b>Tindahan ni Aling Tess</b><small>Nov 16 · Secret code cash-out</small></span><strong>− ₱420.00</strong></div>
-                </div>
-              </div>
-              <aside className="side-column">
-                <div className="side-card profile-card"><div className="side-card-top"><span className="side-icon"><ShieldCheck size={18} /></span><span className="eyebrow">YOUR PUDS ID</span><button onClick={() => { navigator.clipboard?.writeText('PUDS-24819'); setNotice('Nakopya na ang PUDS ID mo.'); }} aria-label="Copy PUDS ID"><Copy size={15} /></button></div><strong className="puds-number">PUDS-24819</strong><p>Ibahagi ito para makatanggap ng bayad.</p><button className="outline-action" onClick={() => setView('receive')}><QrCode size={16} /> Ipakita ang QR code</button></div>
-                <div className="side-card loader-card"><div className="loader-top"><span className="loader-bolt"><Zap size={17} /></span><span className="eyebrow">BUILT FOR DUAL SIM</span></div><h3>Isang load.<br />Dalawang SIM.</h3><p>Load para sa trabaho, biyahe, at araw-araw — sabay sa dalawang SIM.</p><button className="loader-link" onClick={() => { setView('edt'); setLoaded(false); }}>Buksan ang EDT Loader <ArrowRight size={15} /></button><div className="sim-chips"><span><span className="sim-dot green-dot" /> SIM 1</span><span><span className="sim-dot blue-dot" /> SIM 2</span></div></div>
-                <div className="security-note"><LockKeyhole size={15} /><span><b>Ikaw ang may kontrol.</b><br />Bagong device? Mag-verify muna bago mag-login.</span><button onClick={() => setView('security')} aria-label="Tungkol sa seguridad"><ArrowRight size={14} /></button></div>
-              </aside>
-            </section>
-          </>}
+      {screen === 'terminal' && <section className="terminal-page"><div className="terminal-intro"><span className="eyebrow"><span className="live-dot" /> PUDS TERMINAL · DEMO MODE</span><h1>Pay or cash out<br /><em>with a one-time code.</em></h1><p>Use a code generated by the PUDS App. A successful terminal transaction debits the code owner&apos;s simulated wallet once.</p></div><div className="terminal-card"><div className="terminal-card-header"><span className="terminal-logo"><Store size={20} /></span><span><b>{receipt ? 'Payment complete' : 'Process demo payment'}</b><small>Simulated PHP only · No real money</small></span><span className="terminal-status"><span className="live-dot" /> Ready</span></div>{receipt ? <div className="terminal-success"><span className="success-check"><Check size={25} /></span><span className="eyebrow">TRANSACTION APPROVED · COMPLETED</span><strong>₱{money(receipt.amount)}</strong><p>Ref {receipt.ref} · {dateTime(receipt.createdAt)}</p><p className="terminal-demo-note">PUDS ID {receipt.from} · Code used/expired</p><button className="primary-button full-button" onClick={() => { setReceipt(null); setTerminalCode(''); }}>New transaction</button></div> : <div className="terminal-form"><label>Customer PUDS ID<input value={terminalId} onChange={(event) => setTerminalId(event.target.value.toUpperCase())} placeholder="PUDS-XXXXX" /></label><label>4-digit Secret Code<input value={terminalCode} onChange={(event) => setTerminalCode(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} placeholder="0000" /></label>{availableCode && <div className="merchant-hint"><BadgeCheck size={17} /><span><b>Code verified · {profiles.find((profile) => profile.id === availableCode.pudsId)?.name ?? 'Demo user'}</b><small>Available amount: ₱{money(availableCode.amount)}</small></span></div>}<label>Terminal total (₱)<input type="number" min="0.01" step="0.01" value={terminalAmount} onChange={(event) => setTerminalAmount(event.target.value)} /></label><p className="privacy-note">A terminal total may be less than or equal to the code amount. The one-time code expires after the transaction.</p><button className="primary-button full-button" disabled={!availableCode} onClick={processTerminal}>Verify &amp; process <Check size={16} /></button><button className="subtle-button" onClick={() => { setScreen('send'); setAmount('250'); }}>Generate a code in PUDS App</button></div>}</div></section>}
 
-          {view === 'register' && <section className="flow-wrap"><button className="back-link" onClick={backHome}><ArrowLeft size={16} /> Bumalik sa wallet</button><div className="flow-card"><div className="flow-heading"><span className="flow-icon"><ShieldCheck size={21} /></span><span className="eyebrow">PUDS APP · ACCOUNT SETUP</span><h1>Gumawa ng account</h1><p>Mag-register sa ilang simpleng hakbang. Demo flow lamang ito.</p></div><div className="stepper"><span className={step >= 1 ? 'step active' : 'step'}><b>1</b><small>Email</small></span><i /><span className={step >= 2 ? 'step active' : 'step'}><b>2</b><small>Identity</small></span><i /><span className={step >= 3 ? 'step active' : 'step'}><b>3</b><small>Password</small></span></div>
-              {step === 1 && <div className="flow-fields"><label>Email address <span>Gmail</span><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ikaw@gmail.com" type="email" /></label>{otp && <label>One-time password (OTP)<input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="6-digit code" inputMode="numeric" /><small className="field-hint">Demo OTP: <b>123456</b></small></label>}<button className="primary-button full-button" onClick={() => { if (!/^[^\s@]+@gmail\.com$/i.test(email)) { setNotice('Maglagay ng valid na email address.'); return; } if (!otp) { setOtp(''); setNotice('Demo: ipinadala ang OTP 123456. Ilagay ito para magpatuloy.'); setOtp('123456'); return; } if (otp === '123456') { setStep(2); setNotice(''); } else setNotice('Hindi tama ang demo OTP. Subukan ang 123456.'); }}>{otp ? 'I-verify ang OTP' : 'Ipadala ang OTP'} <ArrowRight size={16} /></button><p className="privacy-note"><LockKeyhole size={13} /> Sa totoong serbisyo, ligtas at beripikado ang OTP.</p></div>}
-              {step === 2 && <div className="flow-fields"><label>Valid government ID<div className="upload-box"><CreditCard size={20} /><span><b>{idFile || 'Pumili ng ID para sa demo'}</b><small>UMID, passport, driver&apos;s license, atbp.</small></span><input type="file" accept="image/*,.pdf" onChange={(e) => setIdFile(e.target.files?.[0]?.name || '')} aria-label="Mag-upload ng government ID" /></div></label><div className="camera-box"><span className="camera-icon"><Camera size={20} /></span><div><b>Live face video check</b><small>Camera verification simulation — walang video na nire-record.</small></div><button className={faceVerified ? 'verify-button verified' : 'verify-button'} onClick={() => setFaceVerified(true)}>{faceVerified ? <><Check size={14} /> Verified</> : 'Simulate'}</button></div><button className="primary-button full-button" disabled={!idFile || !faceVerified} onClick={() => { setStep(3); setNotice(''); }}>Magpatuloy <ArrowRight size={16} /></button><button className="subtle-button" onClick={() => setStep(1)}>Bumalik</button></div>}
-              {step === 3 && <div className="flow-fields"><label>Gumawa ng password<input type="password" placeholder="At least 8 characters" /></label><label>Kumpirmahin ang password<input type="password" placeholder="I-type muli ang password" /></label><div className="camera-box"><ShieldCheck size={20} /><div><b>Handa na ang iyong demo account</b><small>Hindi ise-save ang password o KYC details.</small></div></div><button className="primary-button full-button" onClick={completeRegistration}>Tapusin ang demo registration <Check size={16} /></button><button className="subtle-button" onClick={() => setStep(2)}>Bumalik</button></div>}
-            </div></section>}
+      {screen === 'history' && <section className="flow-wrap"><button className="back-link" onClick={() => setScreen('home')}><ArrowLeftRight size={16} /> Wallet</button><div className="flow-card"><div className="flow-heading"><span className="eyebrow">DEMO MODE</span><h1>Transaction history</h1><p>Persistent activity for {currentId} and demo recipients.</p></div><div className="history-list">{demo.transactions.filter((item) => item.from === currentId || item.to === currentId).map((item) => <article className="history-item" key={item.ref}><div><b>{item.type}</b><span>{dateTime(item.createdAt)} · {item.ref}</span><span>{item.from} → {item.to}</span></div><strong>{item.to === currentId ? '+' : '−'} ₱{money(item.amount)}<small>{item.status}</small></strong></article>)}{!demo.transactions.some((item) => item.from === currentId || item.to === currentId) && <p className="empty-activity">No transactions yet.</p>}</div><h2 className="section-subtitle">Secret codes</h2><div className="history-list">{demo.codes.filter((item) => item.pudsId === currentId).map((item) => <article className="history-item" key={item.code}><div><b>Code · ••••{item.code.slice(-2)}</b><span>₱{money(item.amount)} · {dateTime(item.createdAt)}</span></div><strong className={item.status === 'Available' ? 'code-available' : ''}>{item.status}</strong></article>)}{!demo.codes.some((item) => item.pudsId === currentId) && <p className="empty-activity">No codes generated yet.</p>}</div></div></section>}
 
-          {view === 'send' && <section className="flow-wrap"><button className="back-link" onClick={backHome}><ArrowLeft size={16} /> Wallet</button><div className="flow-card"><div className="flow-heading"><span className="flow-icon"><ArrowUpRight size={21} /></span><span className="eyebrow">SEND · MAGBAYAD</span><h1>{transactionDone ? 'Handa na ang bayad' : 'Magpadala ng pera'}</h1><p>{transactionDone ? 'Ibigay ang secret code sa merchant para ma-claim ang bayad.' : 'Mag-book sa restaurant partner, magbayad, o magpadala ng pera.'}</p></div>{transactionDone ? <div className="success-state"><span className="success-check"><Check size={26} /></span><span className="eyebrow">ONE-TIME SECRET CODE · KABISADUHIN LANG</span><strong className="secret-code">{secretCode}</strong><p>{activeTransaction?.amount ? `₱${activeTransaction.amount.toLocaleString('en-PH')}` : 'Ita-type ang halaga sa cashier'} · PUDS ID {activeTransaction?.pudsId}</p>{activeTransaction?.kind === 'advance' && <div className="order-summary"><b>Advance order</b><span>{activeTransaction.item}</span></div>}<div className="privacy-note"><Clock3 size={14} /> One-time demo code · ipasok kasama ang PUDS ID sa terminal</div><button className="primary-button full-button" onClick={enterTerminal}>Buksan ang PUDS Terminal <ArrowRight size={16} /></button><button className="subtle-button" onClick={backHome}>Tapos na</button></div> : <div className="flow-fields"><div className="payment-types" role="group" aria-label="Pumili ng paraan ng pagbabayad"><button className={paymentType === 'cash' ? 'payment-type selected' : 'payment-type'} onClick={() => setPaymentType('cash')}><Store size={16} /><span>Send payment</span></button><button className={paymentType === 'restaurant' ? 'payment-type selected' : 'payment-type'} onClick={() => setPaymentType('restaurant')}><Store size={16} /><span>Booking</span></button><button className={paymentType === 'bill' ? 'payment-type selected' : 'payment-type'} onClick={() => setPaymentType('bill')}><CreditCard size={16} /><span>Bills</span></button></div>{paymentType === 'cash' && <><label>PUDS ID ng pagbabayaran<input value={recipient} onChange={(e) => setRecipient(e.target.value.toUpperCase())} placeholder="Hal. PUDS-54321" autoCapitalize="characters" /></label>{/^PUDS-\d{5}$/.test(normalizedRecipientId) && <div className="merchant-hint" aria-live="polite"><BadgeCheck size={17} /><span><b>May-ari ng PUDS ID · Demo</b><small>{recipientOwnerName || 'Walang demo account na naka-link sa ID na ito.'}</small></span></div>}<label>Halaga (₱)<input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="1" inputMode="decimal" /></label><div className="merchant-hint"><Store size={17} /><span><b>Send payment · cash out sa terminal</b><small>Ibigay ang 4-digit code at kaparehong PUDS ID para ma-claim ang ipinadala mong halaga.</small></span></div></>}{paymentType === 'bill' && <><label>Bill provider<select value={recipient} onChange={(e) => setRecipient(e.target.value)}><option value="Meralco">Meralco</option><option value="Maynilad">Maynilad</option><option value="Manila Water">Manila Water</option><option value="Globe Telecom">Globe Telecom</option></select></label><label>Halaga (₱)<input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="1" inputMode="decimal" /></label></>}{paymentType === 'restaurant' && <div className="jollibee-order"><div className="restaurant-heading"><b>Pumili ng booking service</b><small>Mga PUDS restaurant partner</small></div><div className="restaurant-grid" role="group" aria-label="Pumili ng restaurant partner">{restaurantPartners.map((restaurant) => <button type="button" key={restaurant.id} aria-pressed={restaurantId === restaurant.id} className={restaurantId === restaurant.id ? 'restaurant-option selected' : 'restaurant-option'} onClick={() => { setRestaurantId(restaurant.id); setBranch(restaurant.branches[0]); setMealIndex(0); }}><span className={`restaurant-mark restaurant-${restaurant.id}`}>{restaurant.initial}</span><span><b>{restaurant.name}</b><small>{restaurant.category}</small></span><span className="partner-status">Partner</span></button>)}</div><div className="order-modes" role="group" aria-label="Pumili ng booking type"><button className={orderType === 'advance' ? 'order-mode selected' : 'order-mode'} onClick={() => setOrderType('advance')}><b>Advance booking</b><small>Ihanda bago ka dumating</small></button><button className={orderType === 'walkin' ? 'order-mode selected' : 'order-mode'} onClick={() => setOrderType('walkin')}><b>Walk-in</b><small>Walang order muna</small></button></div>{orderType === 'advance' ? <><label>{selectedRestaurant.name} branch<select value={branch} onChange={(e) => setBranch(e.target.value)}>{selectedRestaurant.branches.map((location) => <option key={location} value={location}>{selectedRestaurant.name} {location}</option>)}</select></label><label>Piliin ang advance order<select value={mealIndex} onChange={(e) => setMealIndex(Number(e.target.value))}>{restaurantMeals.map((meal, index) => <option key={meal.name} value={index}>{meal.name} · ₱{meal.price}</option>)}</select></label><div className="merchant-hint"><Clock3 size={17} /><span><b>Ihanda bago ka dumating</b><small>{selectedRestaurant.name} {branch} · ipakita ang code sa pickup counter.</small></span></div></> : <><div className="any-branch"><b>Any {selectedRestaurant.name} branch</b><span>Walk-in / No Order Yet</span></div><div className="merchant-hint"><Smartphone size={17} /><span><b>Iwan ang phone sa bahay</b><small>Kabisaduhin ang code; ibigay sa cashier kasama ang PUDS ID. Cashier ang maglalagay ng total.</small></span></div></>}</div>}<button className="primary-button full-button" onClick={sendFunds} disabled={(paymentType === 'cash' && !/^PUDS-\d{5}$/i.test(recipient.trim())) || (paymentType !== 'restaurant' && !Number(amount))}>Gumawa ng one-time secret code <ArrowRight size={16} /></button></div>}</div></section>}
+      {screen === 'settings' && <section className="flow-wrap"><button className="back-link" onClick={() => setScreen('home')}><ArrowLeftLeftIcon /> Wallet</button><div className="flow-card"><div className="flow-heading"><span className="eyebrow">SETTINGS · DEMO</span><h1>Demo settings</h1><p>All balances, one-time codes, and transaction history are stored locally in this browser.</p></div><div className="settings-warning"><ShieldCheck size={18} /><span><b>DEMO MODE</b><small>Funds are simulated PHP. This app does not connect to banks or move real money.</small></span></div><button className="reset-button" onClick={resetDemo}><RotateCcw size={16} /> Reset Demo Data</button><p className="privacy-note">Reset restores each sample wallet to ₱{money(STARTING_BALANCE)} and clears all generated codes and transactions.</p></div></section>}
 
-          {view === 'receive' && <section className="flow-wrap"><button className="back-link" onClick={backHome}><ArrowLeft size={16} /> Wallet</button><div className="flow-card receive-flow"><div className="flow-heading"><span className="eyebrow">RECEIVE · TUMANGGAP</span><h1>I-scan para magbayad</h1><p>Ipakita ang QR code o ibahagi ang PUDS ID mo.</p></div><div className="qr-art" aria-label="Illustrative demo QR code"><div className="qr-grid"><span className="qr-finder finder-one" /><span className="qr-finder finder-two" /><span className="qr-finder finder-three" /><span className="qr-pixels" /></div></div><span className="eyebrow">YOUR PUDS ID</span><strong className="receive-id">PUDS-24819</strong><button className="outline-action" onClick={() => { navigator.clipboard?.writeText('PUDS-24819'); setNotice('Nakopya na ang PUDS ID mo.'); }}><Copy size={15} /> Kopyahin ang ID</button><p className="privacy-note">Demo QR — hindi ito naglalaman ng payment credentials.</p></div></section>}
-
-          {view === 'edt' && <section className="flow-wrap"><button className="back-link" onClick={backHome}><ArrowLeft size={16} /> Wallet</button><div className="flow-card edt-flow"><div className="flow-heading"><span className="flow-icon edt-heading-icon"><Zap size={21} /></span><span className="eyebrow">EDT LOADER · BUILT FOR DUAL SIM</span><h1>{loaded ? 'Load submitted!' : 'Isang load, dalawang SIM.'}</h1><p>{loaded ? 'Demo order lang ito — walang totoong load na ipinadala.' : 'Piliin ang data bundle para sa iyong mga SIM card.'}</p></div>{loaded ? <div className="success-state"><span className="success-check"><Check size={26} /></span><strong>{packages[selectedPackage].data} bundle</strong><p>SIM 1 · {simOne}<br />SIM 2 · {simTwo}</p><button className="primary-button full-button" onClick={backHome}>Bumalik sa wallet</button></div> : <div className="flow-fields"><div className="package-list">{packages.map((item, index) => <button key={item.name} className={selectedPackage === index ? 'package-option selected' : 'package-option'} onClick={() => setSelectedPackage(index)}><span className="package-radio">{selectedPackage === index && <i />}</span><span className="package-copy"><b>{item.name} <span>{item.data}</span></b><small>{item.duration} · {item.perSim}</small></span><strong>₱{item.price}</strong></button>)}</div><div className="sim-fields"><label><span className="sim-label"><span className="sim-dot green-dot" /> SIM 1</span><input value={simOne} onChange={(e) => setSimOne(e.target.value)} aria-label="SIM 1 number" /></label><label><span className="sim-label"><span className="sim-dot blue-dot" /> SIM 2</span><input value={simTwo} onChange={(e) => setSimTwo(e.target.value)} aria-label="SIM 2 number" /></label></div><button className="primary-button full-button" onClick={() => setLoaded(true)}>Load both SIMs · ₱{packages[selectedPackage].price} <ArrowRight size={16} /></button><p className="privacy-note"><Wifi size={13} /> Works with Smart, Globe, and DITO. Demo only.</p></div>}</div></section>}
-
-          {view === 'security' && <section className="flow-wrap"><button className="back-link" onClick={backHome}><ArrowLeft size={16} /> Wallet</button><div className="flow-card"><div className="flow-heading"><span className="flow-icon"><Fingerprint size={21} /></span><span className="eyebrow">SECURITY · PROTEKSYON</span><h1>Bagong device?</h1><p>Para protektado ang wallet mo, kailangan ulitin ang identity check sa bagong phone o computer.</p></div><div className="camera-box"><CreditCard size={20} /><div><b>Government ID</b><small>Mag-upload at mag-verify ng valid ID.</small></div><Check className="security-check" size={17} /></div><div className="camera-box"><Camera size={20} /><div><b>Live face video verification</b><small>Ikumpara ang mukha sa ID. Demo simulation lamang.</small></div><button className={faceVerified ? 'verify-button verified' : 'verify-button'} onClick={() => setFaceVerified(true)}>{faceVerified ? <><Check size={14} /> Verified</> : 'Simulate'}</button></div><div className="security-callout"><LockKeyhole size={16} /><span>Sa production, kailangang gawin ang tunay na server-verified identity check bago magbigay ng access.</span></div><button className="primary-button full-button" disabled={!faceVerified} onClick={() => setNotice('Na-verify ang demo device. Walang totoong identity check na isinagawa.')}>I-verify ang device <ArrowRight size={16} /></button></div></section>}
-          <footer className="page-footer"><span>© 2026 PUDS · Ang Wallet sa Balat</span><span>IPOPHL 1-2026-50120</span></footer>
-        </>
-      ) : (
-        <section className="terminal-page">
-          <div className="terminal-intro"><span className="eyebrow"><span className="live-dot" /> PUDS TERMINAL · MERCHANT PORTAL</span><h1>Serbisyo para sa<br /><em>bawat tindahan.</em></h1><p>Tumanggap ng bayad at magproseso ng cash-out — kahit walang smartphone ang customer.</p><div className="terminal-trust"><span><ShieldCheck size={15} /> Secure demo</span><span><Smartphone size={15} /> Phone-free cash-out</span><span><Wifi size={15} /> Mabilis at simple</span></div></div>
-          <div className="terminal-card"><div className="terminal-card-header"><span className="terminal-logo"><Store size={20} /></span><span><b>{merchantAuthOpen ? 'Terminal locked' : cashoutDone ? (terminalAction === 'advance' ? 'Advance order claimed' : terminalAction === 'walkin' ? 'Walk-in payment complete' : terminalAction === 'bill' ? 'Bill payment complete' : 'Cash-out complete') : 'Process a PUDS payment'}</b><small>{cashoutDone ? `Receipt ${receiptNumber} · Demo successful` : merchantVerified ? `${merchantEmail} · Verified demo` : 'PUDS Tindahan · Merchant terminal'}</small></span><span className="terminal-status"><span className="live-dot" />{merchantAuthOpen ? ' Password required' : ' Ready'}</span></div>{merchantAuthOpen ? <div className="terminal-form"><div className="flow-heading"><span className="flow-icon"><LockKeyhole size={20} /></span><span className="eyebrow">MERCHANT ACCESS</span><h1>{merchantPassword ? 'I-unlock ang terminal' : merchantOtpVerified ? 'Gumawa ng terminal password' : 'Protektahan ang terminal'}</h1><p>{merchantPassword ? 'Ilagay ang password ng may-ari bago tumanggap ng cash-in o mag-cash out.' : merchantOtpVerified ? 'Gumawa ng password na 8 character o higit pa.' : 'I-verify muna ang Gmail ng may-ari para magtakda ng password. Demo OTP: 123456.'}</p></div>{merchantPassword ? <label>Password ng may-ari<input type="password" autoComplete="current-password" value={merchantPasswordInput} onChange={(event) => setMerchantPasswordInput(event.target.value)} placeholder="Ilagay ang password" /></label> : merchantOtpVerified ? <><label>Bagong password<input type="password" autoComplete="new-password" value={merchantPasswordInput} onChange={(event) => setMerchantPasswordInput(event.target.value)} placeholder="8 character o higit pa" /></label><label>Kumpirmahin ang password<input type="password" autoComplete="new-password" value={merchantPasswordConfirm} onChange={(event) => setMerchantPasswordConfirm(event.target.value)} placeholder="I-type muli ang password" /></label></> : <><label>Gmail address<input type="email" autoComplete="email" value={merchantEmail} onChange={(event) => setMerchantEmail(event.target.value)} placeholder="tindahan@gmail.com" /></label>{merchantOtpSent && <label>One-time password (OTP)<input inputMode="numeric" maxLength={6} value={merchantOtp} onChange={(event) => setMerchantOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" /></label>}</>}<button className="primary-button full-button" onClick={() => { if (merchantPassword) { if (merchantPasswordInput !== merchantPassword) { setNotice('Hindi tama ang password ng may-ari. Subukan ulit.'); return; } setMerchantVerified(true); setMerchantAuthOpen(false); setMerchantPasswordInput(''); setNotice('Na-unlock ang demo terminal.'); return; } if (!merchantOtpVerified) { if (!/^[^\s@]+@gmail\.com$/i.test(merchantEmail)) { setNotice('Maglagay ng valid na Gmail address.'); return; } if (!merchantOtpSent) { setMerchantOtpSent(true); setNotice('Demo: ipinadala ang OTP 123456.'); return; } if (merchantOtp !== '123456') { setNotice('Hindi tama ang demo OTP. Subukan ang 123456.'); return; } setMerchantOtpVerified(true); setMerchantOtp(''); setNotice('Na-verify ang demo Gmail. Gumawa na ng password.'); return; } if (merchantPasswordInput.length < 8) { setNotice('Gumamit ng password na hindi bababa sa 8 character.'); return; } if (merchantPasswordInput !== merchantPasswordConfirm) { setNotice('Hindi magkatugma ang password.'); return; } setMerchantPassword(merchantPasswordInput); setMerchantVerified(true); setMerchantAuthOpen(false); setMerchantPasswordInput(''); setMerchantPasswordConfirm(''); setMerchantOtpSent(false); setMerchantOtpVerified(false); setMerchantEmail(''); setNotice('Naitakda ang demo terminal password.'); }}>{merchantPassword ? 'I-unlock ang PUDS Terminal' : merchantOtpVerified ? 'I-save ang password' : merchantOtpSent ? 'I-verify ang OTP' : 'Ipadala ang OTP'} <ArrowRight size={16} /></button><button className="subtle-button" onClick={leaveTerminal}>Bumalik sa PUDS App</button><p className="privacy-note"><LockKeyhole size={13} /> Demo lang: nasa kasalukuyang session ang password. Hindi ito proteksyon para sa totoong pera; kailangan ng server-verified authentication sa live service.</p></div> : cashoutDone ? <div className="terminal-success"><span className="success-check"><Check size={25} /></span><span className="eyebrow">TRANSACTION APPROVED</span><strong>{activeTransaction?.amount ? `₱${activeTransaction.amount.toLocaleString('en-PH')}` : `₱${Number(terminalAmount).toLocaleString('en-PH')}`}</strong><p>{terminalAction === 'advance' ? 'Advance order claimed' : terminalAction === 'walkin' ? 'Walk-in payment approved' : terminalAction === 'bill' ? 'Bill payment processed' : 'Cash-out complete'}</p>{activeTransaction?.kind === 'advance' && <p>{activeTransaction.item} · {activeTransaction.branch}</p>}<p className="terminal-demo-note">Receipt {receiptNumber} · PUDS ID {terminalId} · Code {terminalCode}</p><p className="terminal-demo-note">Simulation complete. Walang totoong pera na nailipat.</p><button className="primary-button full-button" onClick={() => { setCashoutDone(false); setTerminalCode(''); setActiveTransaction(null); setSecretCode(''); setTransactionDone(false); setNotice(''); }}>Bagong transaksyon <ArrowRight size={16} /></button></div> : <div className="terminal-form"><div className="terminal-actions" role="group" aria-label="Piliin ang cashier action"><button className={terminalAction === 'walkin' ? 'terminal-action selected' : 'terminal-action'} onClick={() => setTerminalAction('walkin')}>Walk-in payment</button><button className={terminalAction === 'advance' ? 'terminal-action selected' : 'terminal-action'} onClick={() => setTerminalAction('advance')}>Advance pickup</button><button className={terminalAction === 'bill' ? 'terminal-action selected' : 'terminal-action'} onClick={() => setTerminalAction('bill')}>Bills payment</button><button className={terminalAction === 'cashout' ? 'terminal-action selected' : 'terminal-action'} onClick={() => setTerminalAction('cashout')}>Cash out</button></div><div className="scan-panel"><div className="scan-graphic"><ScanLine size={23} /></div><div><b>I-scan ang customer QR</b><small>O ilagay ang PUDS ID at secret code sa ibaba.</small></div><button className="scan-button" onClick={() => { setTerminalId('PUDS-24819'); setNotice('Demo: na-scan ang sample PUDS ID. Ilagay ang 4-digit code na ginawa sa wallet.'); }}>Scan <QrCode size={15} /></button></div><div className="or-divider"><span>MANUAL ENTRY</span></div><label>PUDS ID<input value={terminalId} onChange={(e) => setTerminalId(e.target.value.toUpperCase())} placeholder="PUDS-XXXXX" /></label><label>4-digit secret code<input value={terminalCode} onChange={(e) => setTerminalCode(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} placeholder="• • • •" /></label>{matchedTransaction && <div className="merchant-hint" aria-live="polite"><BadgeCheck size={17} /><span><b>May-ari ng PUDS ID · Demo</b><small>{matchedOwnerName || 'Walang demo name record para sa ID na ito.'}</small></span></div>}<div className="number-pad" role="group" aria-label="Secret code keypad">{['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Clear', '0', 'Delete'].map((key) => <button type="button" key={key} className="keypad-key" aria-label={key === 'Delete' ? 'Burahin ang huling numero' : key === 'Clear' ? 'Burahin ang code' : `Ilagay ang ${key}`} onClick={() => setTerminalCode((current) => key === 'Clear' ? '' : key === 'Delete' ? current.slice(0, -1) : `${current}${key}`.slice(0, 4))}>{key}</button>)}</div><div className="cashout-amount"><span>{terminalAction === 'advance' ? 'Advance order pickup' : terminalAction === 'bill' ? 'Bill payment' : terminalAction === 'walkin' ? 'Walk-in order total' : 'Customer cash-out'}</span>{terminalAction === 'walkin' || terminalAction === 'cashout' ? <label className="terminal-amount-field">Amount (₱)<input value={terminalAmount} onChange={(event) => setTerminalAmount(event.target.value)} type="number" min="1" inputMode="decimal" /></label> : <b>{activeTransaction?.amount ? `₱${activeTransaction.amount.toLocaleString('en-PH')}` : 'Amount linked to wallet code'}</b>}</div><button className="primary-button full-button" disabled={!terminalId || terminalCode.length !== 4} onClick={processCashout}>I-verify at iproseso <ArrowRight size={16} /></button><p className="privacy-note"><LockKeyhole size={13} /> Demo lang. Huwag gumamit ng totoong customer credentials.</p></div>}</div>
-          {merchantVerified && <div className="terminal-register"><span>Na-unlock ang demo terminal</span><button onClick={() => { setMerchantVerified(false); setMerchantPasswordInput(''); setMerchantAuthOpen(true); setNotice('Naka-lock ang terminal. Ilagay muli ang password ng may-ari.'); }}>I-lock ang terminal <LockKeyhole size={14} /></button></div>}
-          <footer className="page-footer"><span>© 2026 PUDS · PUDS Terminal</span><span>IPOPHL 1-2026-50120</span></footer>
-        </section>
-      )}
-
-      {portal === 'wallet' && view === 'home' && !registered && <div className="floating-cta"><span>Bagong user? Simulan ang demo registration.</span><button className="primary-button" onClick={() => { setView('register'); setStep(1); }}>Gumawa ng account <ArrowRight size={15} /></button></div>}
-      <div className="mobile-nav"><button onClick={backHome}><House size={18} /><span>Home</span></button><button onClick={() => setView('send')}><ArrowUpRight size={18} /><span>Send</span></button><button onClick={() => setView('receive')}><QrCode size={18} /><span>Receive</span></button><button onClick={() => setView('edt')}><Zap size={18} /><span>EDT</span></button><button onClick={portal === 'wallet' ? enterTerminal : leaveTerminal}><Menu size={18} /><span>More</span></button></div>
-      <div className="toast-region" aria-live="polite" />
+      <footer className="page-footer"><span>© 2026 PUDS · DEMO MODE</span><span>Simulated funds only</span></footer>
+      <nav className="mobile-nav" aria-label="Main navigation"><button onClick={() => setScreen('home')}><Wallet size={18} /><span>Wallet</span></button><button onClick={() => setScreen('send')}><ArrowUpRight size={18} /><span>Send</span></button><button onClick={() => setScreen('terminal')}><Store size={18} /><span>Terminal</span></button><button onClick={() => setScreen('history')}><History size={18} /><span>History</span></button><button onClick={() => setScreen('settings')}><Settings size={18} /><span>Settings</span></button></nav>
     </main>
   );
+}
+
+function ArrowLeftLeftIcon() {
+  return <ArrowLeftRight size={16} />;
 }
