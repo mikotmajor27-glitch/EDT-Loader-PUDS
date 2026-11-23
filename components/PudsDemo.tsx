@@ -72,7 +72,7 @@ export default function PudsDemo() {
   const availableCode = useMemo(() => demo.codes.find((item) => item.code === terminalCode && item.pudsId === terminalId.trim().toUpperCase() && item.status === 'Available'), [demo.codes, terminalCode, terminalId]);
 
   useEffect(() => {
-    if (availableCode) setTerminalAmount(String(availableCode.amount));
+    if (availableCode) setTerminalAmount(availableCode.amount === 0 ? '' : String(availableCode.amount));
   }, [availableCode]);
 
   const submitTransfer = () => {
@@ -94,7 +94,8 @@ export default function PudsDemo() {
     if (!availableCode) return setNotice('Code not found, expired, or already used. Check the PUDS ID and 4-digit code.');
     const amountToDebit = Number(terminalAmount);
     if (!Number.isFinite(amountToDebit) || amountToDebit <= 0 || Math.round(amountToDebit * 100) !== amountToDebit * 100) return setNotice('Enter a valid terminal amount greater than ₱0.');
-    if (amountToDebit !== availableCode.amount) return setNotice(`Enter the exact amount authorized by this code: ₱${money(availableCode.amount)}.`);
+    const cashierSetsAmount = availableCode.amount === 0 && availableCode.note?.includes('Walk-in purchase');
+    if (!cashierSetsAmount && amountToDebit !== availableCode.amount) return setNotice(`Enter the exact amount authorized by this code: ₱${money(availableCode.amount)}.`);
     if (amountToDebit > (demo.balances[id] ?? STARTING_BALANCE)) return setNotice('Insufficient demo balance.');
     const transaction: Transaction = { ref: newReference(), type: 'Terminal payment / cash-out', amount: amountToDebit, from: id, to: 'PUDS Terminal', note: availableCode.note || `Terminal amount entered: ₱${money(Number(terminalAmount) || 0)}`, status: 'Completed', createdAt: new Date().toISOString() };
     setDemo((prev) => ({ ...prev, balances: { ...prev.balances, [id]: (prev.balances[id] ?? STARTING_BALANCE) - amountToDebit }, codes: prev.codes.map((item) => item.code === availableCode.code ? { ...item, status: 'Used/Expired' } : item), transactions: [transaction, ...prev.transactions] }));
@@ -116,7 +117,8 @@ export default function PudsDemo() {
   };
 
   const createBookingCode = (value: number, detail: string) => {
-    if (!Number.isFinite(value) || value <= 0 || value > balance) { setNotice('Enter a valid amount within your wallet balance.'); return ''; }
+    const isCashierPricedWalkIn = value === 0 && detail.includes('Walk-in purchase');
+    if (!Number.isFinite(value) || (!isCashierPricedWalkIn && value <= 0) || value > balance) { setNotice('Enter a valid amount within your wallet balance.'); return ''; }
     let secret: string;
     do {
       secret = String(Math.floor(1000 + Math.random() * 9000));
