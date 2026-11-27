@@ -37,7 +37,8 @@ Project Lead: Michael Coralde Macaraeg
 
 LinkedIn: https://www.linkedin.com/in/michael-macaraeg-13001a388
 
-Location: Philippines
+Location: Philippines 
+Address: B93 L14 North Ville 2B Bagumbong Caloocan City. 
 © 2026 EDT Loader PUDS. Patent-Pending. All Rights Reserved.
 
 +639565202750
